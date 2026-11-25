@@ -86,7 +86,7 @@ export default function WhiteboardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    if (!cameraRunning || !drawingHand) {
+    if (!cameraRunning || !drawingHand?.active) {
       stopStroke();
       if (cameraRunning) {
         requiresRearmRef.current = true;
@@ -142,13 +142,13 @@ export default function WhiteboardCanvas({
       setPaletteOpen(false);
       return;
     }
-    if (controlGesture === "OPEN_PALM" && !controlHandLowered) {
+    if (controlHand?.active && controlGesture === "OPEN_PALM" && !controlHandLowered) {
       if (closePaletteTimerRef.current !== null) {
         window.clearTimeout(closePaletteTimerRef.current);
         closePaletteTimerRef.current = null;
       }
       setPaletteOpen(true);
-    } else if ((!controlHand || controlHandLowered) && paletteOpen) {
+    } else if ((!controlHand?.active || controlHandLowered) && paletteOpen) {
       if (closePaletteTimerRef.current === null) {
         closePaletteTimerRef.current = window.setTimeout(() => {
           closePaletteTimerRef.current = null;
@@ -156,7 +156,7 @@ export default function WhiteboardCanvas({
         }, 650);
       }
     }
-  }, [cameraRunning, controlGesture, controlHandLowered, paletteOpen]);
+  }, [cameraRunning, controlHand?.active, controlGesture, controlHandLowered, paletteOpen]);
 
   const handlePaletteAction = useCallback((action: string) => {
     if (action === "brush") setSelectedTool("brush");
@@ -179,7 +179,7 @@ export default function WhiteboardCanvas({
 
   useEffect(() => {
     let target: HTMLElement | null = null;
-    if (paletteOpen && controlHand?.gesture === "DRAW") {
+    if (paletteOpen && controlHand?.active && controlHand.gesture === "DRAW") {
       const stage = stageRef.current;
       if (stage) {
         const rect = stage.getBoundingClientRect();
@@ -223,7 +223,7 @@ export default function WhiteboardCanvas({
         handlePaletteAction(action);
       }
     }
-  }, [controlHand?.point.x, controlHand?.point.y, controlHand, paletteOpen, handlePaletteAction]);
+  }, [controlHand?.active, controlHand?.point.x, controlHand?.point.y, controlHand, paletteOpen, handlePaletteAction]);
 
   useEffect(() => () => {
     stopStroke();
@@ -252,7 +252,7 @@ export default function WhiteboardCanvas({
     }, "image/png");
   };
 
-  const handCursorStyle: CSSProperties | undefined = controlHand && paletteOpen
+  const handCursorStyle: CSSProperties | undefined = controlHand?.active && paletteOpen
     ? {
         left: `${controlHand.point.x * 100}%`,
         top: `${controlHand.point.y * 100}%`,

@@ -6,15 +6,33 @@ import WhiteboardCanvas from "./WhiteboardCanvas";
 export default function CameraPreview() {
   const { videoRef, hands, status, error, start, stop } = useHandTracking();
   const [drawingHand, setDrawingHand] = useState<Handedness | null>(null);
+  const [showGestureArea, setShowGestureArea] = useState(true);
+
+  const mappedHands = useMemo(() => hands.map((hand) => {
+    const left = 0.03;
+    const right = 0.97;
+    const top = 0.04;
+    const bottom = 0.96;
+    const { x, y } = hand.point;
+    const active = x >= left && x <= right && y >= top && y <= bottom;
+    return {
+      ...hand,
+      active,
+      point: {
+        x: Math.max(0, Math.min(1, (x - left) / (right - left))),
+        y: Math.max(0, Math.min(1, (y - top) / (bottom - top))),
+      },
+    };
+  }), [hands]);
 
   const detectedHandedness = useMemo(
     () => Array.from(new Set(hands.map((hand) => hand.handedness))),
     [hands],
   );
-  const drawingHandData = hands.find(
+  const drawingHandData = mappedHands.find(
     (hand) => hand.handedness === drawingHand,
   ) ?? null;
-  const controlHandData = hands.find(
+  const controlHandData = mappedHands.find(
     (hand) => drawingHand !== null && hand.handedness !== drawingHand,
   ) ?? null;
   const drawingHandChosen = drawingHand !== null;
@@ -69,9 +87,26 @@ export default function CameraPreview() {
           cameraRunning={status === "running"}
         />
 
-        <div className="camera-pip" aria-label="Mirrored camera preview">
+        <div className="camera-pip" aria-label="Mirrored camera preview with gesture area guide">
           <video ref={videoRef} autoPlay playsInline muted />
           {status !== "running" && <span>Camera preview</span>}
+          {showGestureArea && (
+            <>
+              <div className="camera-guide-shade camera-guide-shade--top" />
+              <div className="camera-guide-shade camera-guide-shade--right" />
+              <div className="camera-guide-shade camera-guide-shade--bottom" />
+              <div className="camera-guide-shade camera-guide-shade--left" />
+              <div className="camera-active-area" aria-hidden="true" />
+            </>
+          )}
+          <button
+            className="camera-guide-toggle"
+            type="button"
+            aria-pressed={showGestureArea}
+            onClick={() => setShowGestureArea((visible) => !visible)}
+          >
+            {showGestureArea ? "Hide guide" : "Show guide"}
+          </button>
         </div>
 
         {status === "running" && !drawingHand && (

@@ -14,6 +14,7 @@ export interface TrackedHand {
   landmarks: HandPoint[];
   gesture: GestureType;
   point: { x: number; y: number };
+  active: boolean;
 }
 
 type TrackingStatus = "idle" | "starting" | "running" | "error";
@@ -100,6 +101,7 @@ export function useHandTracking() {
               landmarks: points,
               gesture,
               point: { x: 1 - points[8].x, y: points[8].y },
+              active: true,
             });
           });
 
