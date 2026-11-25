@@ -17,7 +17,7 @@ Camera manager
 MediaPipe Tasks Vision
      |
      v
-Hand landmarks (21 points)
+Hand landmarks for up to two hands (21 points each)
      |
      v
 Landmark / feature processor
@@ -112,21 +112,28 @@ Responsibilities:
 - Prevent conflicting actions.
 - Reset safely when the hand is lost.
 - Prevent accidental strokes during transitions.
-Example states:
-- idle
-- drawing
-- erasing
-- selecting (optional)
+The setup step assigns the selected MediaPipe handedness to the drawing role;
+the other handedness becomes the control role.
+
 Example transitions:
-IDLE --draw confirmed--> DRAWING
-DRAWING --pause confirmed--> IDLE
-DRAWING --erase confirmed--> ERASING
-ERASING --pause confirmed--> IDLE
-ANY ACTIVE STATE --hand lost--> IDLE
+DRAWING HAND
+READY --index finger confirmed--> DRAWING
+DRAWING --two-finger pause--> PAUSED
+DRAWING --hand lost--> REARM REQUIRED
+REARM REQUIRED --pause pose, then index finger--> DRAWING
+
+CONTROL HAND
+LOWERED --open palm raised--> PALETTE OPEN
+PALETTE OPEN --point and dwell over item--> TOOL SELECTED
+PALETTE OPEN --hand lowered or lost--> LOWERED
 4.7 Interaction controller
 Responsibilities:
 - Translate confirmed gesture states into application commands.
 - Coordinate cursor position, selected tool, and canvas actions.
+- Keep drawing-hand and control-hand roles independent so a control gesture
+  does not interrupt a stroke from the other hand.
+- Map the control hand's point to the fixed top-left palette and require a
+  short stable dwell to commit a highlighted selection.
 - Keep gesture recognition separate from the drawing implementation.
 4.8 Canvas engine
 Responsibilities:

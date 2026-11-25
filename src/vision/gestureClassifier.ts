@@ -2,10 +2,11 @@ import type { HandPoint } from "./landmarkProcessor";
 
 export type GestureType =
   | "DRAW"
-  | "POINTER"
   | "PAUSE"
-  | "IDLE"
+  | "OPEN_PALM"
   | "UNKNOWN";
+
+export type Handedness = "Left" | "Right";
 
 interface FingerState {
   index: boolean;
@@ -75,19 +76,14 @@ export function classifyGesture(
     return "DRAW";
   }
 
-  // Index and middle fingers: Pointer mode
+  // Index and middle fingers: intentional pause pose.
   if (index && middle && !ring && !pinky) {
-    return "POINTER";
-  }
-
-  // All four fingers extended: Standby mode
-  if (index && middle && ring && pinky) {
-    return "IDLE";
-  }
-
-  // All four fingers curled: Pause mode
-  if (!index && !middle && !ring && !pinky) {
     return "PAUSE";
+  }
+
+  // Open palm: raise the control hand to open the palette.
+  if (index && middle && ring && pinky) {
+    return "OPEN_PALM";
   }
 
   return "UNKNOWN";

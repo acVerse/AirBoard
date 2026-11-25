@@ -1,630 +1,348 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-
-import { DrawingEngine } from "../whiteboard/drawingEngine";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { TrackedHand } from "../hooks/useHandTracking";
 import { createBrush, DEFAULT_BRUSH } from "../whiteboard/brush";
 import { createEraser } from "../whiteboard/eraser";
-
-import type { HandPoint } from "../vision/landmarkProcessor";
-import type { GestureType } from "../vision/gestureClassifier";
+import { DrawingEngine } from "../whiteboard/drawingEngine";
 
 type DrawingTool = "brush" | "eraser";
 
 interface WhiteboardCanvasProps {
-  landmarks: HandPoint[];
-  currentGesture: GestureType;
+  drawingHand: TrackedHand | null;
+  controlHand: TrackedHand | null;
+  cameraRunning: boolean;
 }
 
+const COLORS = ["#17211C", "#2563EB", "#E24735", "#12966A", "#8B5CF6"];
+const SIZES = [5, 10, 16];
+
 export default function WhiteboardCanvas({
-  landmarks,
-  currentGesture,
+  drawingHand,
+  controlHand,
+  cameraRunning,
 }: WhiteboardCanvasProps) {
+  const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef(new DrawingEngine());
   const isDrawingRef = useRef(false);
+  const requiresRearmRef = useRef(false);
+  const hoverTargetRef = useRef<HTMLElement | null>(null);
+  const dwellTargetRef = useRef<HTMLElement | null>(null);
+  const activatedTargetRef = useRef<HTMLElement | null>(null);
+  const dwellStartedAtRef = useRef(0);
+  const lastProgressStepRef = useRef(-1);
+  const closePaletteTimerRef = useRef<number | null>(null);
 
-  const smoothedPointerRef = useRef<{
-    x: number;
-    y: number;
-  } | null>(null);
-
-  const previousGestureRef = useRef<GestureType>("UNKNOWN");
-
-  const [debugInfo, setDebugInfo] = useState("Waiting for hand...");
-
-  const [selectedColor, setSelectedColor] = useState(
-    DEFAULT_BRUSH.color
-  );
-
-  const [brushSize, setBrushSize] = useState(
-    DEFAULT_BRUSH.size
-  );
-
-  const [selectedTool, setSelectedTool] =
-    useState<DrawingTool>("brush");
+  const [selectedColor, setSelectedColor] = useState(DEFAULT_BRUSH.color);
+  const [brushSize, setBrushSize] = useState(DEFAULT_BRUSH.size);
+  const [selectedTool, setSelectedTool] = useState<DrawingTool>("brush");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [dwellProgress, setDwellProgress] = useState(0);
+  const [trackingMessage, setTrackingMessage] = useState("Start the camera to begin");
 
   const brush = useMemo(
-    () =>
-      createBrush({
-        color: selectedColor,
-        size: brushSize,
-        opacity: 1,
-      }),
-    [selectedColor, brushSize]
+    () => createBrush({ color: selectedColor, size: brushSize, opacity: 1 }),
+    [selectedColor, brushSize],
+  );
+  const eraser = useMemo(() => createEraser(Math.max(28, brushSize * 3)), [brushSize]);
+  const controlGesture = controlHand?.gesture ?? null;
+  const controlHandLowered = Boolean(
+    controlHand && (controlHand.landmarks[0]?.y ?? 0) > 0.82,
   );
 
-  const eraser = useMemo(
-    () => createEraser(25),
-    []
-  );
-
-  const handDetected = Boolean(landmarks[8]);
-
-  // Initialize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
+    const stage = stageRef.current;
+    if (!canvas || !stage) return;
 
-    if (!canvas) return;
-
-    canvas.width = 1200;
-    canvas.height = 700;
-
-    engineRef.current.render(canvas);
-  }, []);
-
-  // Pointer smoothing
-  const smoothPointer = (
-    x: number,
-    y: number
-  ): { x: number; y: number } => {
-    const previous = smoothedPointerRef.current;
-
-    if (!previous) {
-      const initial = { x, y };
-      smoothedPointerRef.current = initial;
-
-      return initial;
-    }
-
-    const dx = x - previous.x;
-    const dy = y - previous.y;
-
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    const DEAD_ZONE = 0.002;
-
-    if (distance < DEAD_ZONE) {
-      return previous;
-    }
-
-    const SMOOTHING_FACTOR = 0.25;
-
-    const smoothed = {
-      x: previous.x + dx * SMOOTHING_FACTOR,
-      y: previous.y + dy * SMOOTHING_FACTOR,
+    const resize = () => {
+      const { width, height } = stage.getBoundingClientRect();
+      if (width < 1 || height < 1) return;
+      canvas.width = Math.round(width);
+      canvas.height = Math.round(height);
+      engineRef.current.render(canvas);
     };
 
-    smoothedPointerRef.current = smoothed;
+    const observer = new ResizeObserver(resize);
+    observer.observe(stage);
+    resize();
+    return () => observer.disconnect();
+  }, []);
 
-    return smoothed;
-  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPaletteOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
-  // Draw pointer
-  const drawPointer = (
-    canvas: HTMLCanvasElement,
-    x: number,
-    y: number
-  ) => {
-    const ctx = canvas.getContext("2d");
+  const stopStroke = useCallback(() => {
+    if (!isDrawingRef.current) return;
+    engineRef.current.endStroke();
+    isDrawingRef.current = false;
+  }, []);
 
-    if (!ctx) return;
-
-    const pointerX = x * canvas.width;
-    const pointerY = y * canvas.height;
-
-    ctx.save();
-
-    ctx.beginPath();
-    ctx.arc(pointerX, pointerY, 12, 0, Math.PI * 2);
-
-    ctx.fillStyle = "rgba(37, 99, 235, 0.15)";
-    ctx.fill();
-
-    ctx.strokeStyle = "#2563EB";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(pointerX, pointerY, 3, 0, Math.PI * 2);
-
-    ctx.fillStyle = "#2563EB";
-    ctx.fill();
-
-    ctx.beginPath();
-
-    ctx.moveTo(pointerX - 18, pointerY);
-    ctx.lineTo(pointerX - 10, pointerY);
-
-    ctx.moveTo(pointerX + 10, pointerY);
-    ctx.lineTo(pointerX + 18, pointerY);
-
-    ctx.moveTo(pointerX, pointerY - 18);
-    ctx.lineTo(pointerX, pointerY - 10);
-
-    ctx.moveTo(pointerX, pointerY + 10);
-    ctx.lineTo(pointerX, pointerY + 18);
-
-    ctx.strokeStyle = "#2563EB";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.restore();
-  };
-
-  // Handle gesture interaction
   useEffect(() => {
     const canvas = canvasRef.current;
-
     if (!canvas) return;
 
-    const indexTip = landmarks[8];
-
-    // No hand detected
-    if (!indexTip) {
-      setDebugInfo("No hand detected | Waiting...");
-
-      if (isDrawingRef.current) {
-        engineRef.current.endStroke();
-        isDrawingRef.current = false;
+    if (!cameraRunning || !drawingHand) {
+      stopStroke();
+      if (cameraRunning) {
+        requiresRearmRef.current = true;
+        setTrackingMessage("Drawing paused · show your drawing hand");
+      } else {
+        requiresRearmRef.current = false;
+        setTrackingMessage("Start the camera to begin");
       }
-
-      smoothedPointerRef.current = null;
-      previousGestureRef.current = "UNKNOWN";
-
       engineRef.current.render(canvas);
-
       return;
     }
 
-    let point = {
-      x: 1 - indexTip.x,
-      y: indexTip.y,
-    };
-
-    // Reset pointer when entering POINTER
-    if (
-      currentGesture === "POINTER" &&
-      previousGestureRef.current !== "POINTER"
-    ) {
-      smoothedPointerRef.current = null;
+    if (requiresRearmRef.current) {
+      stopStroke();
+      if (drawingHand.gesture === "PAUSE") {
+        requiresRearmRef.current = false;
+        setTrackingMessage("Ready · raise one finger to draw");
+      } else {
+        setTrackingMessage("Hand found · show two fingers, then one to resume");
+      }
+      engineRef.current.render(canvas);
+      return;
     }
 
-    // Smooth pointer movement
-    if (currentGesture === "POINTER") {
-      point = smoothPointer(point.x, point.y);
-    }
-
-    previousGestureRef.current = currentGesture;
-
-    setDebugInfo(
-      `Gesture: ${currentGesture} | X: ${point.x.toFixed(3)} | Y: ${point.y.toFixed(3)}`
-    );
-
-    // DRAW
-    if (currentGesture === "DRAW") {
+    const point = drawingHand.point;
+    if (drawingHand.gesture === "DRAW") {
+      setTrackingMessage("Drawing · show two fingers to pause");
       if (!isDrawingRef.current) {
-        const settings =
-          selectedTool === "eraser" ? eraser : brush;
-
-        engineRef.current.startStroke(
-          point,
-          settings,
-          selectedTool
-        );
-
+        const settings = selectedTool === "eraser" ? eraser : brush;
+        engineRef.current.startStroke(point, settings, selectedTool);
         isDrawingRef.current = true;
       } else {
         engineRef.current.addPoint(point);
       }
+    } else {
+      stopStroke();
+      setTrackingMessage(
+        drawingHand.gesture === "PAUSE"
+          ? "Paused · raise one finger to draw"
+          : "Ready · raise one finger to draw",
+      );
     }
 
-    // Stop drawing for other gestures
-    else {
-      if (isDrawingRef.current) {
-        engineRef.current.endStroke();
-        isDrawingRef.current = false;
-      }
-    }
-
-    // Render strokes
     engineRef.current.render(canvas);
+  }, [cameraRunning, drawingHand, selectedTool, brush, eraser, stopStroke]);
 
-    // POINTER
-    if (currentGesture === "POINTER") {
-      drawPointer(canvas, point.x, point.y);
-    }
-  }, [
-    landmarks,
-    currentGesture,
-    selectedTool,
-    brush,
-    eraser,
-  ]);
-
-  // Cleanup
   useEffect(() => {
-    return () => {
-      if (isDrawingRef.current) {
-        engineRef.current.endStroke();
-        isDrawingRef.current = false;
+    if (!cameraRunning) {
+      if (closePaletteTimerRef.current !== null) {
+        window.clearTimeout(closePaletteTimerRef.current);
+        closePaletteTimerRef.current = null;
       }
-    };
-  }, []);
+      setPaletteOpen(false);
+      return;
+    }
+    if (controlGesture === "OPEN_PALM" && !controlHandLowered) {
+      if (closePaletteTimerRef.current !== null) {
+        window.clearTimeout(closePaletteTimerRef.current);
+        closePaletteTimerRef.current = null;
+      }
+      setPaletteOpen(true);
+    } else if ((!controlHand || controlHandLowered) && paletteOpen) {
+      if (closePaletteTimerRef.current === null) {
+        closePaletteTimerRef.current = window.setTimeout(() => {
+          closePaletteTimerRef.current = null;
+          setPaletteOpen(false);
+        }, 650);
+      }
+    }
+  }, [cameraRunning, controlGesture, controlHandLowered, paletteOpen]);
 
-  // Undo
-  const handleUndo = () => {
-    if (isDrawingRef.current) {
-      engineRef.current.endStroke();
-      isDrawingRef.current = false;
+  const handlePaletteAction = useCallback((action: string) => {
+    if (action === "brush") setSelectedTool("brush");
+    else if (action === "eraser") setSelectedTool("eraser");
+    else if (action === "undo") {
+      stopStroke();
+      engineRef.current.undo();
+      if (canvasRef.current) engineRef.current.render(canvasRef.current);
+    } else if (action === "clear") {
+      stopStroke();
+      engineRef.current.clear();
+      if (canvasRef.current) engineRef.current.render(canvasRef.current);
+    } else if (action.startsWith("color:")) {
+      setSelectedColor(action.slice("color:".length));
+      setSelectedTool("brush");
+    } else if (action.startsWith("size:")) {
+      setBrushSize(Number(action.slice("size:".length)));
+    }
+  }, [stopStroke]);
+
+  useEffect(() => {
+    let target: HTMLElement | null = null;
+    if (paletteOpen && controlHand?.gesture === "DRAW") {
+      const stage = stageRef.current;
+      if (stage) {
+        const rect = stage.getBoundingClientRect();
+        const x = rect.left + controlHand.point.x * rect.width;
+        const y = rect.top + controlHand.point.y * rect.height;
+        target = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-palette-action]") ?? null;
+      }
+    }
+    if (hoverTargetRef.current !== target) {
+      hoverTargetRef.current?.classList.remove("is-hovered");
+      target?.classList.add("is-hovered");
+      hoverTargetRef.current = target;
     }
 
-    engineRef.current.undo();
-
-    const canvas = canvasRef.current;
-
-    if (canvas) engineRef.current.render(canvas);
-  };
-
-  // Redo
-  const handleRedo = () => {
-    if (isDrawingRef.current) {
-      engineRef.current.endStroke();
-      isDrawingRef.current = false;
+    if (target !== dwellTargetRef.current) {
+      dwellTargetRef.current = target;
+      dwellStartedAtRef.current = performance.now();
+      activatedTargetRef.current = null;
+      lastProgressStepRef.current = 0;
+      setDwellProgress(0);
     }
 
-    engineRef.current.redo();
-
-    const canvas = canvasRef.current;
-
-    if (canvas) engineRef.current.render(canvas);
-  };
-
-  // Clear
-  const handleClear = () => {
-    if (isDrawingRef.current) {
-      engineRef.current.endStroke();
-      isDrawingRef.current = false;
+    if (!target || (target as HTMLButtonElement).disabled) {
+      lastProgressStepRef.current = -1;
+      setDwellProgress(0);
+      if (target) dwellStartedAtRef.current = performance.now();
+    } else if (activatedTargetRef.current !== target) {
+      const action = target.dataset.paletteAction ?? "";
+      const dwellDuration = action === "clear" ? 1200 : 650;
+      const progress = Math.min(
+        1,
+        (performance.now() - dwellStartedAtRef.current) / dwellDuration,
+      );
+      const progressStep = Math.floor(progress * 20);
+      if (progressStep !== lastProgressStepRef.current) {
+        lastProgressStepRef.current = progressStep;
+        setDwellProgress(progress);
+      }
+      if (progress >= 1) {
+        activatedTargetRef.current = target;
+        handlePaletteAction(action);
+      }
     }
+  }, [controlHand?.point.x, controlHand?.point.y, controlHand, paletteOpen, handlePaletteAction]);
 
-    engineRef.current.clear();
+  useEffect(() => () => {
+    stopStroke();
+    if (closePaletteTimerRef.current !== null) window.clearTimeout(closePaletteTimerRef.current);
+  }, [stopStroke]);
 
+  const exportPng = () => {
     const canvas = canvasRef.current;
-
-    if (canvas) engineRef.current.render(canvas);
+    if (!canvas) return;
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    const context = exportCanvas.getContext("2d");
+    if (!context) return;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    context.drawImage(canvas, 0, 0);
+    exportCanvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `airboard-${new Date().toISOString().slice(0, 10)}.png`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
   };
 
-  // Gesture visual configuration
-  const gestureConfig: Record<
-    GestureType,
-    { color: string; background: string; message: string }
-  > = {
-    DRAW: {
-      color: "#15803D",
-      background: "#DCFCE7",
-      message: "Drawing with your fingertip",
-    },
-
-    POINTER: {
-      color: "#1D4ED8",
-      background: "#DBEAFE",
-      message: "Moving pointer",
-    },
-
-    PAUSE: {
-      color: "#B45309",
-      background: "#FEF3C7",
-      message: "Drawing paused",
-    },
-
-    IDLE: {
-      color: "#475569",
-      background: "#E2E8F0",
-      message: "Standing by",
-    },
-
-    UNKNOWN: {
-      color: "#B91C1C",
-      background: "#FEE2E2",
-      message: "Waiting for a valid gesture",
-    },
-  };
-
-  const activeGesture = gestureConfig[currentGesture];
+  const handCursorStyle: CSSProperties | undefined = controlHand && paletteOpen
+    ? {
+        left: `${controlHand.point.x * 100}%`,
+        top: `${controlHand.point.y * 100}%`,
+        "--dwell-progress": `${dwellProgress * 100}%`,
+      } as CSSProperties
+    : undefined;
 
   return (
-    <div style={styles.container}>
+    <div className="board-stage" ref={stageRef}>
+      <canvas ref={canvasRef} className="drawing-canvas" aria-label="Whiteboard drawing surface" />
 
-      {/* Header */}
-      <div style={styles.header}>
-        <h2 style={styles.title}>AirBoard Whiteboard</h2>
-
-        <div
-          style={{
-            ...styles.statusBadge,
-            color: activeGesture.color,
-            backgroundColor: activeGesture.background,
-          }}
-        >
-          <span
-            style={{
-              ...styles.statusDot,
-              backgroundColor: activeGesture.color,
-            }}
-          />
-
-          {currentGesture}
-        </div>
-      </div>
-
-      {/* Gesture feedback */}
-      <div style={styles.feedback}>
+      <div className="board-topline">
         <div>
-          <strong>{activeGesture.message}</strong>
-
-          <p style={styles.feedbackSubtext}>
-            {handDetected
-              ? "Hand detected successfully"
-              : "Position your hand in front of the camera"}
-          </p>
+          <span className="eyebrow">PRESENTATION BOARD</span>
+          <p className="tracking-message" aria-live="polite">{trackingMessage}</p>
         </div>
-
-        <span
-          style={{
-            ...styles.handIndicator,
-            color: handDetected ? "#15803D" : "#DC2626",
-          }}
-        >
-          ● {handDetected ? "HAND DETECTED" : "NO HAND"}
-        </span>
+        <div className="board-quick-actions">
+          <button className="button button--board" onClick={() => setPaletteOpen((open) => !open)}>
+            {paletteOpen ? "Hide tools" : "Tools"}
+          </button>
+          <button className="button button--board" onClick={exportPng}>Export PNG</button>
+        </div>
       </div>
 
-      <p style={styles.debug}>{debugInfo}</p>
-
-      {/* Toolbar */}
-      <div style={styles.toolbar}>
-
-        <div style={styles.toolGroup}>
-          <button
-            style={{
-              ...styles.toolButton,
-              ...(selectedTool === "brush"
-                ? styles.activeButton
-                : {}),
-            }}
-            onClick={() => setSelectedTool("brush")}
-          >
-            Brush
-          </button>
-
-          <button
-            style={{
-              ...styles.toolButton,
-              ...(selectedTool === "eraser"
-                ? styles.activeButton
-                : {}),
-            }}
-            onClick={() => setSelectedTool("eraser")}
-          >
-            Eraser
-          </button>
+      {paletteOpen && (
+        <div className="tool-palette" aria-label="Gesture tool palette">
+          <div className="palette-heading">
+            <span>TOOLS</span>
+            <span className="palette-hint">Point and hold</span>
+          </div>
+          <div className="palette-tool-row">
+            <button data-palette-action="brush" className={`palette-tool ${selectedTool === "brush" ? "is-selected" : ""}`} onClick={() => handlePaletteAction("brush")}>
+              <span className="tool-glyph">✎</span><span>Pen</span>
+            </button>
+            <button data-palette-action="eraser" className={`palette-tool ${selectedTool === "eraser" ? "is-selected" : ""}`} onClick={() => handlePaletteAction("eraser")}>
+              <span className="tool-glyph">⌫</span><span>Eraser</span>
+            </button>
+            <button data-palette-action="undo" className="palette-tool" onClick={() => handlePaletteAction("undo")} disabled={!engineRef.current.canUndo()}>
+              <span className="tool-glyph">↶</span><span>Undo</span>
+            </button>
+            <button data-palette-action="clear" className="palette-tool palette-tool--danger" onClick={() => handlePaletteAction("clear")}>
+              <span className="tool-glyph">⌧</span><span>Clear</span>
+            </button>
+          </div>
+          <div className="palette-options">
+            <div className="palette-option-block">
+              <span className="palette-label">COLOR</span>
+              <div className="swatch-row">
+                {COLORS.map((color) => (
+                  <button
+                    key={color}
+                    data-palette-action={`color:${color}`}
+                    className={`color-swatch ${selectedColor.toUpperCase() === color.toUpperCase() && selectedTool === "brush" ? "is-selected" : ""}`}
+                    style={{ "--swatch": color } as CSSProperties}
+                    aria-label={`Select ${color} pen color`}
+                    onClick={() => handlePaletteAction(`color:${color}`)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="palette-option-block">
+              <span className="palette-label">PEN SIZE</span>
+              <div className="size-row">
+                {SIZES.map((size) => (
+                  <button
+                    key={size}
+                    data-palette-action={`size:${size}`}
+                    className={`size-choice ${brushSize === size ? "is-selected" : ""}`}
+                    onClick={() => handlePaletteAction(`size:${size}`)}
+                  ><span style={{ width: size + 3, height: size + 3 }} />{size === 5 ? "Fine" : size === 10 ? "Medium" : "Bold"}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className="palette-footnote">Hold still to select · Clear takes about 1.2 seconds</p>
         </div>
+      )}
 
-        <div style={styles.controlGroup}>
-          <label>Color</label>
-
-          <input
-            type="color"
-            value={selectedColor}
-            onChange={(e) =>
-              setSelectedColor(e.target.value)
-            }
-            disabled={selectedTool === "eraser"}
-          />
+      {controlHand && paletteOpen && (
+        <div className="gesture-cursor" style={handCursorStyle} aria-hidden="true">
+          <span>＋</span>
         </div>
+      )}
 
-        <div style={styles.controlGroup}>
-          <label>Size: {brushSize}px</label>
-
-          <input
-            type="range"
-            min="1"
-            max="30"
-            value={brushSize}
-            onChange={(e) =>
-              setBrushSize(Number(e.target.value))
-            }
-          />
+      {!cameraRunning && (
+        <div className="empty-board-hint">
+          <span className="hint-spark" aria-hidden="true">✳</span>
+          <span>Your lesson board is ready</span>
         </div>
-
-        <div style={styles.toolGroup}>
-          <button
-            style={styles.actionButton}
-            onClick={handleUndo}
-            disabled={!engineRef.current.canUndo()}
-          >
-            Undo
-          </button>
-
-          <button
-            style={styles.actionButton}
-            onClick={handleRedo}
-            disabled={!engineRef.current.canRedo()}
-          >
-            Redo
-          </button>
-
-          <button
-            style={styles.clearButton}
-            onClick={handleClear}
-          >
-            Clear
-          </button>
-        </div>
-
-      </div>
-
-      {/* Canvas */}
-      <canvas
-        ref={canvasRef}
-        style={styles.canvas}
-      />
-
-      {/* Instructions */}
-      <div style={styles.instructions}>
-        <span>✋ DRAW — Draw on the canvas</span>
-        <span>☝️ POINTER — Move the cursor</span>
-        <span>✊ PAUSE — Stop drawing</span>
-      </div>
-
+      )}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    width: "100%",
-    marginTop: "30px",
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: "12px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "22px",
-  },
-
-  statusBadge: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "8px 14px",
-    borderRadius: "20px",
-    fontSize: "13px",
-    fontWeight: "bold",
-    transition: "all 0.2s ease",
-  },
-
-  statusDot: {
-    width: "9px",
-    height: "9px",
-    borderRadius: "50%",
-  },
-
-  feedback: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: "12px",
-    padding: "14px",
-    marginTop: "15px",
-    backgroundColor: "#F8FAFC",
-    border: "1px solid #E2E8F0",
-    borderRadius: "10px",
-  },
-
-  feedbackSubtext: {
-    margin: "5px 0 0",
-    fontSize: "12px",
-    color: "#64748B",
-  },
-
-  handIndicator: {
-    fontSize: "11px",
-    fontWeight: "bold",
-  },
-
-  debug: {
-    fontSize: "12px",
-    color: "#64748B",
-    margin: "10px 0",
-  },
-
-  toolbar: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: "18px",
-    padding: "15px",
-    backgroundColor: "#F1F5F9",
-    borderRadius: "10px",
-    marginBottom: "12px",
-  },
-
-  toolGroup: {
-    display: "flex",
-    gap: "8px",
-  },
-
-  controlGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "5px",
-    fontSize: "13px",
-  },
-
-  toolButton: {
-    padding: "9px 15px",
-    border: "1px solid #CBD5E1",
-    borderRadius: "6px",
-    backgroundColor: "white",
-    cursor: "pointer",
-  },
-
-  activeButton: {
-    backgroundColor: "#2563EB",
-    color: "white",
-    border: "1px solid #2563EB",
-  },
-
-  actionButton: {
-    padding: "9px 13px",
-    border: "1px solid #CBD5E1",
-    borderRadius: "6px",
-    backgroundColor: "white",
-    cursor: "pointer",
-  },
-
-  clearButton: {
-    padding: "9px 13px",
-    border: "none",
-    borderRadius: "6px",
-    backgroundColor: "#DC2626",
-    color: "white",
-    cursor: "pointer",
-  },
-
-  canvas: {
-    display: "block",
-    width: "100%",
-    aspectRatio: "12 / 7",
-    backgroundColor: "#FFFFFF",
-    border: "2px solid #CBD5E1",
-    borderRadius: "12px",
-    marginTop: "12px",
-  },
-
-  instructions: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "20px",
-    padding: "12px 4px",
-    fontSize: "12px",
-    color: "#64748B",
-  },
-};

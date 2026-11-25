@@ -54,6 +54,10 @@ Tasks:
 - Implement clear canvas.
 - Implement PNG export.
 - Add camera, tracking, and gesture status feedback.
+- Track drawing and control hands with separate interaction roles.
+- Add the persistent, projector-readable palette anchored top-left.
+- Support point-and-hold tool selection while the drawing hand continues.
+- Make Clear a longer point-and-hold action on its palette item.
 Milestone: A usable web whiteboard with core controls.
 Phase 4 --- Testing and portfolio release
 Target: Week 4
@@ -77,7 +81,7 @@ These are intentionally excluded from the initial release:
 - Multiplayer collaboration.
 - AI drawing generation.
 - Trained deep-learning gesture classification.
-- Two-hand advanced interactions.
+- Advanced multi-hand gestures beyond separate drawing and control roles.
 - Multiple saved projects.
 - Mobile-native applications.
 Release criteria

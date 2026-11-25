@@ -1,8 +1,8 @@
 AirBoard --- Project Overview
 1. Summary
-AirBoard is a planned browser-based, gesture-controlled virtual
-whiteboard. It explores touchless human-computer interaction by
-interpreting hand movements captured through a webcam and mapping them to digital actions.
+AirBoard is a browser-based, gesture-controlled virtual whiteboard for
+teachers presenting lessons. It interprets hand movements captured through a
+webcam and maps them to drawing and whiteboard actions.
 
 The project began as a local Python computer-vision prototype. The next development stage is a browser application that retains the core interaction idea while introducing a more complete product experience.
 2. Problem and opportunity
@@ -47,16 +47,15 @@ These use cases should be validated with informal usability testing
 before making strong claims about user impact.
 6. Product scope
 Initial MVP
-- Browser camera access with explicit permission.
-- Hand landmark detection.
-- Fingertip tracking.
-- A small set of stable gestures.
-- Drawing and erasing.
-- Gesture status feedback.
-- Color and brush-size selection.
-- Undo and redo.
-- Clear canvas and export to PNG.
-- Graceful handling of camera and tracking errors.
+- Browser camera access with explicit permission and a visible stop control.
+- Two-hand tracking with distinct drawing and control roles.
+- Drawing and pausing with the drawing hand.
+- A persistent, fixed top-left tool palette opened and operated by the
+  control hand while drawing continues.
+- Gesture selection for pen color, brush size, eraser, undo, and protected
+  clear.
+- Projector-readable tool and tracking feedback.
+- PNG export and graceful handling of camera and tracking errors.
 Out of scope for the initial MVP
 - User accounts and authentication.
 - Cloud storage and synchronization.
@@ -65,7 +64,9 @@ Out of scope for the initial MVP
 - Mobile-native applications.
 - Deep-learning gesture classification.
 - Complex presentation and document editing.
-These may be reconsidered after the MVP is complete and evaluated.
+Multiple pages, imported lesson files, and cloud saves are also deferred until
+the teacher workflow is evaluated. These may be reconsidered after the MVP is
+complete.
 7. Product principles
 1. Reliability before feature count. A small set of gestures should work consistently.
 2. Clarity before complexity. Users should understand the active gesture and tool.
@@ -73,14 +74,12 @@ These may be reconsidered after the MVP is complete and evaluated.
 4. Modularity. Vision, gesture, canvas, and interface responsibilities should remain separate.
 5. Evidence over claims. Report measured performance and known limitations honestly.
 8. Success criteria
-The MVP will be considered successful when a user can:
-- Open the application in a supported browser.
-- Grant camera access.
-- See a detected hand and tracked fingertip.
-- Draw and erase using supported gestures.
-- Use basic whiteboard controls.
-- Export a drawing.
-- Recover gracefully from loss of hand tracking or camera access.
+The MVP will be considered successful when a teacher can:
+- Start the camera and see the drawing and control hands identified.
+- Annotate a lesson with one hand while selecting tools with the other.
+- Use the fixed top-left palette without interrupting a stroke.
+- Recover safely from tracking loss or an accidental action.
+- Export the board as a PNG.
 Technical quality will be evaluated using the metrics in [TESTING.md](TESTING.md).
 9. Current status
 Implemented in the Python prototype
@@ -91,7 +90,7 @@ Implemented in the Python prototype
 - Coordinate smoothing.
 - Drawing and erasing on an OpenCV canvas.
 - Keyboard controls.
-Planned for the web application
+Implemented or in progress in the web application
 - React and TypeScript interface.
 - Browser camera manager.
 - MediaPipe Tasks Vision integration.
@@ -99,4 +98,8 @@ Planned for the web application
 - Gesture state machine and stabilization.
 - HTML Canvas drawing engine.
 - Whiteboard controls and export.
-The planned items are not complete until implemented and tested.
+
+The browser prototype now includes the teacher workflow's first interaction
+implementation. Classroom reliability, gesture thresholds, and presentation
+usability still need hands-on evaluation. See [TEACHER_MVP.md](TEACHER_MVP.md)
+for the interaction contract and acceptance criteria.

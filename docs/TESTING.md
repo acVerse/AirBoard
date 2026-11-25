@@ -47,14 +47,10 @@ other fingers folded
   G-02                    Index and middle        Pause candidate
 fingers extended        
 
-  G-03                    Three selected fingers  Erase candidate
-extended                
+  G-03                    Open palm               Opens control palette
 
-  G-04                    Open palm               Select candidate, if
-enabled
-
-  G-05                    Closed fist             Stop candidate, if
-enabled
+  G-04                    Control hand points     Highlights item; stable
+and holds                 dwell selects it
 
   G-06                    Hand rotated            Classification remains
 stable or safely
@@ -63,7 +59,7 @@ returns unknown
   G-07                    Hand partially occluded No unintended drawing
 
   G-08                    No hand detected        Active interaction
-resets to idle
+pauses and roles remain
 
   G-09                    Gesture changes briefly No unintended mode
 for one frame           switch
@@ -92,11 +88,16 @@ is reversed
   C-06                    Redo                    Undone action is
 restored
 
-  C-07                    Clear canvas            Canvas becomes empty
+  C-07                    Hold Clear              Canvas empties after the
+                          for 1.2 seconds          longer dwell
 
-  C-08                    Export PNG              Downloaded image
+  C-08                    Lose drawing hand       Stroke pauses; after
+                          and reacquire            return, pause then draw
+                                                  is required
+
+  C-09                    Export PNG              Downloaded image
 contains the drawing
-C-09                    Resize the viewport     Canvas mapping remains
+C-10                    Resize the viewport     Canvas mapping remains
 aligned
 5. Camera and browser tests
   Test case               Scenario                Expected behavior

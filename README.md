@@ -1,32 +1,46 @@
-# React + TypeScript + Vite
+# AirBoard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+AirBoard is a gesture-controlled whiteboard for teachers presenting lessons.
+The browser app uses a webcam and MediaPipe hand tracking to draw on a digital
+board. Camera frames are processed locally in the browser.
 
-Currently, two official plugins are available:
+The current MVP workflow supports one drawing hand and one control hand. Read
+the [teacher MVP spec](docs/TEACHER_MVP.md) for the product decisions and
+acceptance criteria.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run locally
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open the local Vite URL in a modern browser and grant camera access. Camera
+access requires localhost or another secure context.
+
+## Use the board
+
+1. Start the camera, raise the hand you want to draw with, then choose its
+   detected left/right label in setup.
+2. Draw with one extended index finger. Extend the index and middle fingers
+   to pause.
+3. Raise the other hand with an open palm to show the fixed top-left palette.
+   Point at an item and hold steady until the cursor ring fills to select it
+   while the drawing hand keeps working. Lower the control hand to close the
+   palette. Clear takes a longer hold.
+4. If the drawing hand leaves the camera view, show the pause pose and then
+   the draw pose after it returns.
+5. Export the board as a PNG from the board controls.
+
+Mouse controls provide a fallback for palette and camera actions. With the
+page body focused, Space toggles the camera, R reopens hand setup, and Escape
+closes the palette.
+
+## Project docs
+
+- [Teacher MVP interaction spec](docs/TEACHER_MVP.md)
+- [Requirements](docs/REQUIREMENTS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development guide](docs/DEVELOPMENT.md)
+- [Testing strategy](docs/TESTING.md)
+- [Roadmap](docs/ROADMAP.md)

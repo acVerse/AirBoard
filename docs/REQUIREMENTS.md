@@ -80,36 +80,38 @@ calibration or
 sensitivity
 settings.                            
 
-  FR-18             Support multiple   Could             Future
-hands and two-hand
-interactions.                        
-
   FR-19             Support multiple   Could             Future
 saved whiteboard
 projects.                            
 FR-20             Support user       Could             Future
 accounts and cloud
 synchronization.
+FR-18             Support two-hand   Must              MVP
+tracking and allow a
+control hand to operate
+the palette while the
+other hand draws.
+FR-21             Import lesson       Could             Future
+files and support
+multiple pages.
 3. Initial gesture requirements
 The following gestures are proposed for the web MVP. Their final
 definitions must be tested with different hand sizes, orientations, and
 camera positions.
-  Gesture                 Proposed action         Notes
-  Index finger extended   Draw                    Other fingers should be
-folded according to the
-classifier rules.
-
-  Index and middle        Pause / stop drawing    Must not create a
-fingers extended                                stroke.
-
-  Three selected fingers  Erase                   Final finger
-extended                                        combination must be
-validated.
-
-  Open palm               Select / enter          Optional if time
-selection mode          permits.
-Closed fist             Stop active interaction Optional if it can be
-distinguished reliably.
+  Hand / gesture          Proposed action         Notes
+  Drawing hand, index     Draw                    Other fingers follow the
+  extended                                        classifier rules.
+  Drawing hand, index     Pause drawing           Must not create a stroke.
+  and middle extended
+  Control hand raised     Open fixed palette      Palette stays open while
+                                                  the hand is in use.
+  Control hand points     Highlight palette item  Pointing alone does not
+                                                  activate a tool.
+  Control hand holds      Select highlighted tool Hold until cursor ring
+  over an item                                     fills; drawing continues.
+  Control hand lowered    Close palette           Does not stop drawing.
+  Control hand holds      Clear board              Hold about 1.2 seconds;
+  over Clear                                       no second confirmation.
 The classifier should not rely only on raw vertical landmark
 comparisons. It should consider relative landmark positions and, where
 useful, joint angles and normalized distances.
@@ -185,3 +187,9 @@ The first web release should meet all of the following:
 12. Tracking loss does not leave a stroke unexpectedly active.
 13. Camera errors are communicated to the user.
 14. The repository includes setup instructions and testing documentation.
+15. The drawing hand can keep drawing while the control hand operates a
+    persistent palette anchored in the top-left corner.
+16. Pointing highlights a tool; holding steady selects it after about 650 ms.
+17. Holding on Clear for about 1.2 seconds clears the board in one action.
+18. Setup lets the teacher identify the intended drawing hand; tracking loss
+    preserves roles and requires a pause gesture followed by draw to resume.

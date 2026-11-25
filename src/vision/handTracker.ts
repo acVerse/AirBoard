@@ -21,7 +21,7 @@ export async function initializeHandTracker(): Promise<HandLandmarker> {
       delegate: "GPU",
     },
     runningMode: "VIDEO",
-    numHands: 1,
+    numHands: 2,
   });
 
   return handLandmarker;
