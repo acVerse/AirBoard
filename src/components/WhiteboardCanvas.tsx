@@ -22,6 +22,13 @@ export default function WhiteboardCanvas({
   const engineRef = useRef(new DrawingEngine());
   const isDrawingRef = useRef(false);
 
+  const smoothedPointerRef = useRef<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const previousGestureRef = useRef<GestureType>("UNKNOWN");
+
   const [debugInfo, setDebugInfo] = useState("Waiting for hand...");
 
   const [selectedColor, setSelectedColor] = useState(
@@ -50,9 +57,12 @@ export default function WhiteboardCanvas({
     []
   );
 
+  const handDetected = Boolean(landmarks[8]);
+
   // Initialize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
+
     if (!canvas) return;
 
     canvas.width = 1200;
@@ -61,36 +71,145 @@ export default function WhiteboardCanvas({
     engineRef.current.render(canvas);
   }, []);
 
-  // Handle drawing
+  // Pointer smoothing
+  const smoothPointer = (
+    x: number,
+    y: number
+  ): { x: number; y: number } => {
+    const previous = smoothedPointerRef.current;
+
+    if (!previous) {
+      const initial = { x, y };
+      smoothedPointerRef.current = initial;
+
+      return initial;
+    }
+
+    const dx = x - previous.x;
+    const dy = y - previous.y;
+
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    const DEAD_ZONE = 0.002;
+
+    if (distance < DEAD_ZONE) {
+      return previous;
+    }
+
+    const SMOOTHING_FACTOR = 0.25;
+
+    const smoothed = {
+      x: previous.x + dx * SMOOTHING_FACTOR,
+      y: previous.y + dy * SMOOTHING_FACTOR,
+    };
+
+    smoothedPointerRef.current = smoothed;
+
+    return smoothed;
+  };
+
+  // Draw pointer
+  const drawPointer = (
+    canvas: HTMLCanvasElement,
+    x: number,
+    y: number
+  ) => {
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) return;
+
+    const pointerX = x * canvas.width;
+    const pointerY = y * canvas.height;
+
+    ctx.save();
+
+    ctx.beginPath();
+    ctx.arc(pointerX, pointerY, 12, 0, Math.PI * 2);
+
+    ctx.fillStyle = "rgba(37, 99, 235, 0.15)";
+    ctx.fill();
+
+    ctx.strokeStyle = "#2563EB";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(pointerX, pointerY, 3, 0, Math.PI * 2);
+
+    ctx.fillStyle = "#2563EB";
+    ctx.fill();
+
+    ctx.beginPath();
+
+    ctx.moveTo(pointerX - 18, pointerY);
+    ctx.lineTo(pointerX - 10, pointerY);
+
+    ctx.moveTo(pointerX + 10, pointerY);
+    ctx.lineTo(pointerX + 18, pointerY);
+
+    ctx.moveTo(pointerX, pointerY - 18);
+    ctx.lineTo(pointerX, pointerY - 10);
+
+    ctx.moveTo(pointerX, pointerY + 10);
+    ctx.lineTo(pointerX, pointerY + 18);
+
+    ctx.strokeStyle = "#2563EB";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.restore();
+  };
+
+  // Handle gesture interaction
   useEffect(() => {
     const canvas = canvasRef.current;
+
     if (!canvas) return;
 
     const indexTip = landmarks[8];
 
+    // No hand detected
     if (!indexTip) {
-      setDebugInfo(
-        `Gesture: ${currentGesture} | No fingertip detected`
-      );
+      setDebugInfo("No hand detected | Waiting...");
 
       if (isDrawingRef.current) {
         engineRef.current.endStroke();
         isDrawingRef.current = false;
       }
 
+      smoothedPointerRef.current = null;
+      previousGestureRef.current = "UNKNOWN";
+
       engineRef.current.render(canvas);
+
       return;
     }
 
-    const point = {
+    let point = {
       x: 1 - indexTip.x,
       y: indexTip.y,
     };
+
+    // Reset pointer when entering POINTER
+    if (
+      currentGesture === "POINTER" &&
+      previousGestureRef.current !== "POINTER"
+    ) {
+      smoothedPointerRef.current = null;
+    }
+
+    // Smooth pointer movement
+    if (currentGesture === "POINTER") {
+      point = smoothPointer(point.x, point.y);
+    }
+
+    previousGestureRef.current = currentGesture;
 
     setDebugInfo(
       `Gesture: ${currentGesture} | X: ${point.x.toFixed(3)} | Y: ${point.y.toFixed(3)}`
     );
 
+    // DRAW
     if (currentGesture === "DRAW") {
       if (!isDrawingRef.current) {
         const settings =
@@ -106,61 +225,165 @@ export default function WhiteboardCanvas({
       } else {
         engineRef.current.addPoint(point);
       }
-    } else if (isDrawingRef.current) {
-      engineRef.current.endStroke();
-      isDrawingRef.current = false;
     }
 
-    engineRef.current.render(canvas);
-  }, [landmarks, currentGesture, selectedTool, brush, eraser]);
+    // Stop drawing for other gestures
+    else {
+      if (isDrawingRef.current) {
+        engineRef.current.endStroke();
+        isDrawingRef.current = false;
+      }
+    }
 
-  // Stop active drawing when component unmounts
+    // Render strokes
+    engineRef.current.render(canvas);
+
+    // POINTER
+    if (currentGesture === "POINTER") {
+      drawPointer(canvas, point.x, point.y);
+    }
+  }, [
+    landmarks,
+    currentGesture,
+    selectedTool,
+    brush,
+    eraser,
+  ]);
+
+  // Cleanup
   useEffect(() => {
     return () => {
       if (isDrawingRef.current) {
         engineRef.current.endStroke();
+        isDrawingRef.current = false;
       }
     };
   }, []);
 
   // Undo
   const handleUndo = () => {
-    isDrawingRef.current = false;
+    if (isDrawingRef.current) {
+      engineRef.current.endStroke();
+      isDrawingRef.current = false;
+    }
 
     engineRef.current.undo();
 
     const canvas = canvasRef.current;
+
     if (canvas) engineRef.current.render(canvas);
   };
 
   // Redo
   const handleRedo = () => {
-    isDrawingRef.current = false;
+    if (isDrawingRef.current) {
+      engineRef.current.endStroke();
+      isDrawingRef.current = false;
+    }
 
     engineRef.current.redo();
 
     const canvas = canvasRef.current;
+
     if (canvas) engineRef.current.render(canvas);
   };
 
-  // Clear canvas
+  // Clear
   const handleClear = () => {
-    isDrawingRef.current = false;
+    if (isDrawingRef.current) {
+      engineRef.current.endStroke();
+      isDrawingRef.current = false;
+    }
 
     engineRef.current.clear();
 
     const canvas = canvasRef.current;
+
     if (canvas) engineRef.current.render(canvas);
   };
+
+  // Gesture visual configuration
+  const gestureConfig: Record<
+    GestureType,
+    { color: string; background: string; message: string }
+  > = {
+    DRAW: {
+      color: "#15803D",
+      background: "#DCFCE7",
+      message: "Drawing with your fingertip",
+    },
+
+    POINTER: {
+      color: "#1D4ED8",
+      background: "#DBEAFE",
+      message: "Moving pointer",
+    },
+
+    PAUSE: {
+      color: "#B45309",
+      background: "#FEF3C7",
+      message: "Drawing paused",
+    },
+
+    IDLE: {
+      color: "#475569",
+      background: "#E2E8F0",
+      message: "Standing by",
+    },
+
+    UNKNOWN: {
+      color: "#B91C1C",
+      background: "#FEE2E2",
+      message: "Waiting for a valid gesture",
+    },
+  };
+
+  const activeGesture = gestureConfig[currentGesture];
 
   return (
     <div style={styles.container}>
 
+      {/* Header */}
       <div style={styles.header}>
-        <h2>AirBoard Whiteboard</h2>
+        <h2 style={styles.title}>AirBoard Whiteboard</h2>
 
-        <span style={styles.gesture}>
-          Mode: {currentGesture}
+        <div
+          style={{
+            ...styles.statusBadge,
+            color: activeGesture.color,
+            backgroundColor: activeGesture.background,
+          }}
+        >
+          <span
+            style={{
+              ...styles.statusDot,
+              backgroundColor: activeGesture.color,
+            }}
+          />
+
+          {currentGesture}
+        </div>
+      </div>
+
+      {/* Gesture feedback */}
+      <div style={styles.feedback}>
+        <div>
+          <strong>{activeGesture.message}</strong>
+
+          <p style={styles.feedbackSubtext}>
+            {handDetected
+              ? "Hand detected successfully"
+              : "Position your hand in front of the camera"}
+          </p>
+        </div>
+
+        <span
+          style={{
+            ...styles.handIndicator,
+            color: handDetected ? "#15803D" : "#DC2626",
+          }}
+        >
+          ● {handDetected ? "HAND DETECTED" : "NO HAND"}
         </span>
       </div>
 
@@ -195,23 +418,21 @@ export default function WhiteboardCanvas({
           </button>
         </div>
 
-        {/* Color picker */}
         <div style={styles.controlGroup}>
           <label>Color</label>
 
           <input
             type="color"
             value={selectedColor}
-            onChange={(e) => setSelectedColor(e.target.value)}
+            onChange={(e) =>
+              setSelectedColor(e.target.value)
+            }
             disabled={selectedTool === "eraser"}
           />
         </div>
 
-        {/* Brush size */}
         <div style={styles.controlGroup}>
-          <label>
-            Size: {brushSize}px
-          </label>
+          <label>Size: {brushSize}px</label>
 
           <input
             type="range"
@@ -224,7 +445,6 @@ export default function WhiteboardCanvas({
           />
         </div>
 
-        {/* History controls */}
         <div style={styles.toolGroup}>
           <button
             style={styles.actionButton}
@@ -252,11 +472,18 @@ export default function WhiteboardCanvas({
 
       </div>
 
-      {/* Whiteboard */}
+      {/* Canvas */}
       <canvas
         ref={canvasRef}
         style={styles.canvas}
       />
+
+      {/* Instructions */}
+      <div style={styles.instructions}>
+        <span>✋ DRAW — Draw on the canvas</span>
+        <span>☝️ POINTER — Move the cursor</span>
+        <span>✊ PAUSE — Stop drawing</span>
+      </div>
 
     </div>
   );
@@ -272,17 +499,60 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: "12px",
   },
 
-  gesture: {
+  title: {
+    margin: 0,
+    fontSize: "22px",
+  },
+
+  statusBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 14px",
+    borderRadius: "20px",
+    fontSize: "13px",
     fontWeight: "bold",
-    color: "#2563EB",
+    transition: "all 0.2s ease",
+  },
+
+  statusDot: {
+    width: "9px",
+    height: "9px",
+    borderRadius: "50%",
+  },
+
+  feedback: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "12px",
+    padding: "14px",
+    marginTop: "15px",
+    backgroundColor: "#F8FAFC",
+    border: "1px solid #E2E8F0",
+    borderRadius: "10px",
+  },
+
+  feedbackSubtext: {
+    margin: "5px 0 0",
+    fontSize: "12px",
+    color: "#64748B",
+  },
+
+  handIndicator: {
+    fontSize: "11px",
+    fontWeight: "bold",
   },
 
   debug: {
-    fontSize: "13px",
+    fontSize: "12px",
     color: "#64748B",
-    margin: "8px 0",
+    margin: "10px 0",
   },
 
   toolbar: {
@@ -347,5 +617,14 @@ const styles: Record<string, React.CSSProperties> = {
     border: "2px solid #CBD5E1",
     borderRadius: "12px",
     marginTop: "12px",
+  },
+
+  instructions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "20px",
+    padding: "12px 4px",
+    fontSize: "12px",
+    color: "#64748B",
   },
 };
