@@ -4,9 +4,9 @@ export class HistoryManager<T> {
 
   private readonly maxHistory: number;
 
-constructor(maxHistory = 50) {
-  this.maxHistory = maxHistory;
-}
+  constructor(maxHistory = 50) {
+    this.maxHistory = maxHistory;
+  }
 
   save(state: T): void {
     this.undoStack.push(structuredClone(state));
@@ -15,17 +15,25 @@ constructor(maxHistory = 50) {
       this.undoStack.shift();
     }
 
+    // A new action invalidates the redo history
     this.redoStack = [];
   }
 
   undo(currentState: T): T | null {
-    if (this.undoStack.length === 0) {
+    // Keep at least one previous state
+    if (this.undoStack.length <= 1) {
       return null;
     }
 
-    const previousState = this.undoStack.pop()!;
-
+    // Save current state for redo
     this.redoStack.push(structuredClone(currentState));
+
+    // Remove current snapshot
+    this.undoStack.pop();
+
+    // Return previous snapshot
+    const previousState =
+      this.undoStack[this.undoStack.length - 1];
 
     return structuredClone(previousState);
   }
@@ -37,7 +45,7 @@ constructor(maxHistory = 50) {
 
     const nextState = this.redoStack.pop()!;
 
-    this.undoStack.push(structuredClone(currentState));
+    this.undoStack.push(structuredClone(nextState));
 
     return structuredClone(nextState);
   }
@@ -48,7 +56,7 @@ constructor(maxHistory = 50) {
   }
 
   canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.undoStack.length > 1;
   }
 
   canRedo(): boolean {

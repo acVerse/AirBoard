@@ -43,10 +43,21 @@ export class DrawingEngine {
   }
 
   addPoint(point: DrawingPoint): void {
-    if (!this.activeStroke) return;
+  if (!this.activeStroke) return;
 
-    this.activeStroke.points.push(point);
-  }
+  const points = this.activeStroke.points;
+  const previous = points[points.length - 1];
+
+  // Reduce small tracking fluctuations
+  const smoothing = 0.35;
+
+  const smoothedPoint: DrawingPoint = {
+    x: previous.x + (point.x - previous.x) * smoothing,
+    y: previous.y + (point.y - previous.y) * smoothing,
+  };
+
+  this.activeStroke.points.push(smoothedPoint);
+}
 
   endStroke(): void {
     if (!this.activeStroke) return;
@@ -93,62 +104,83 @@ export class DrawingEngine {
   }
 
   canUndo(): boolean {
-    return this.history.canUndo() || this.activeStroke !== null;
-  }
+  return (
+    this.history.canUndo() ||
+    this.activeStroke !== null
+  );
+}
 
-  canRedo(): boolean {
-    return this.history.canRedo();
-  }
+canRedo(): boolean {
+  return this.history.canRedo();
+}
 
   render(canvas: HTMLCanvasElement): void {
-    const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d");
 
-    if (!ctx) return;
+  if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (const stroke of this.getStrokes()) {
-      if (stroke.points.length === 0) continue;
+  for (const stroke of this.getStrokes()) {
+    if (stroke.points.length === 0) continue;
 
-      ctx.save();
+    ctx.save();
 
-      ctx.globalAlpha = stroke.opacity;
+    ctx.globalAlpha = stroke.opacity;
 
-      ctx.globalCompositeOperation =
-        stroke.tool === "eraser" ? "destination-out" : "source-over";
+    ctx.globalCompositeOperation =
+      stroke.tool === "eraser"
+        ? "destination-out"
+        : "source-over";
 
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.size;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.size;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
-      ctx.beginPath();
+    ctx.beginPath();
 
-      const firstPoint = stroke.points[0];
+    const first = stroke.points[0];
 
-      ctx.moveTo(
-        firstPoint.x * canvas.width,
-        firstPoint.y * canvas.height
-      );
+    const firstX = first.x * canvas.width;
+    const firstY = first.y * canvas.height;
 
+    ctx.moveTo(firstX, firstY);
+
+    if (stroke.points.length === 1) {
+      ctx.lineTo(firstX + 0.01, firstY + 0.01);
+    } else {
       for (let i = 1; i < stroke.points.length; i++) {
-        const point = stroke.points[i];
+        const previous = stroke.points[i - 1];
+        const current = stroke.points[i];
 
-        ctx.lineTo(
-          point.x * canvas.width,
-          point.y * canvas.height
+        const midX =
+          ((previous.x + current.x) / 2) * canvas.width;
+
+        const midY =
+          ((previous.y + current.y) / 2) * canvas.height;
+
+        const previousX = previous.x * canvas.width;
+        const previousY = previous.y * canvas.height;
+
+        ctx.quadraticCurveTo(
+          previousX,
+          previousY,
+          midX,
+          midY
         );
       }
 
-      if (stroke.points.length === 1) {
-        ctx.lineTo(
-          firstPoint.x * canvas.width + 0.1,
-          firstPoint.y * canvas.height + 0.1
-        );
-      }
+      const last = stroke.points[stroke.points.length - 1];
 
-      ctx.stroke();
-      ctx.restore();
+      ctx.lineTo(
+        last.x * canvas.width,
+        last.y * canvas.height
+      );
     }
+
+    ctx.stroke();
+    ctx.restore();
   }
+}
 }
