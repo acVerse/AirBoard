@@ -38,7 +38,7 @@ export class HistoryManager<T> {
     return structuredClone(previousState);
   }
 
-  redo(currentState: T): T | null {
+  redo(_currentState: T): T | null {
     if (this.redoStack.length === 0) {
       return null;
     }
